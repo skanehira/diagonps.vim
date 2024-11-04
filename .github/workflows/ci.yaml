@@ -1,0 +1,93 @@
+name: ci
+on:
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - 'README.md'
+  pull_request:
+    paths-ignore:
+      - 'README.md'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    strategy:
+      matrix:
+        deno-version: 
+          - v2.x
+        os: 
+          - ubuntu-22.04
+    name: deno lint
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@main
+        with:
+          deno-version: ${{ matrix.deno-version }}
+      - name: run lint
+        run: deno lint
+  test:
+    strategy:
+      matrix:
+        runner:
+          - windows-2022
+          - macos-15
+          - ubuntu-22.04
+        version:
+          - "2.x"
+        host_version:
+          - vim: "v9.0.0472"
+            nvim: "v0.8.0"
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - run: git config --global core.autocrlf false
+        if: runner.os == 'Windows'
+      - uses: actions/checkout@v4
+        with:
+          path: "./repo"
+      - uses: actions/checkout@v4
+        with:
+          repository: "vim-denops/denops.vim"
+          path: "./denops.vim"
+      - uses: denoland/setup-deno@main
+        with:
+          deno-version: "${{ matrix.version }}"
+      - uses: thinca/action-setup-vim@v1
+        id: vim
+        with:
+          vim_type: "Vim"
+          vim_version: "${{ matrix.host_version.vim }}"
+          download: "never"
+      - name: Check Vim
+        run: |
+          echo ${DENOPS_TEST_VIM_EXECUTABLE}
+        env:
+          DENOPS_TEST_VIM_EXECUTABLE: ${{ steps.vim.outputs.executable_path }}
+      - uses: thinca/action-setup-vim@v1
+        id: nvim
+        with:
+          vim_type: "Neovim"
+          vim_version: "${{ matrix.host_version.nvim }}"
+      - name: Check Neovim
+        run: |
+          echo ${DENOPS_TEST_NVIM_EXECUTABLE}
+        env:
+          DENOPS_TEST_NVIM_EXECUTABLE: ${{ steps.nvim.outputs.executable_path }}
+      - name: Setup themis
+        id: themis
+        run: |
+          git clone https://github.com/thinca/vim-themis $HOME/vim-themis
+          echo "$HOME/vim-themis/bin" >> $GITHUB_PATH
+      - name: Test
+        run: |
+          make test
+        env:
+          DENOPS_TEST_DENOPS_PATH: "../denops.vim"
+          DENOPS_TEST_VIM_EXECUTABLE: ${{ steps.vim.outputs.executable_path }}
+          DENOPS_TEST_NVIM_EXECUTABLE: ${{ steps.nvim.outputs.executable_path }}
+        timeout-minutes: 3
+        working-directory: ./repo
