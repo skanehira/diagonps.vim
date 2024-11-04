@@ -1,4 +1,4 @@
-let s:suite = themis#suite('template')
+let s:suite = themis#suite('diagonps')
 let s:assert = themis#helper('assert')
 
 " wait for denops starting

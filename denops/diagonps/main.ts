@@ -1,17 +1,63 @@
 import { Denops } from "jsr:@denops/std@7.3.0";
-import { isString } from "jsr:@core/unknownutil@4.3.0";
+import {
+  bufexists,
+  bufwinid,
+  getbufline,
+  setbufline,
+  win_gotoid,
+} from "jsr:@denops/std@7.3.0/function";
+import { is } from "jsr:@core/unknownutil@4.3.0";
+import Diagon from "npm:diagonjs";
 
 export async function main(denops: Denops): Promise<void> {
+  const diagon = await Diagon.init();
+
+  const translators = [
+    "math",
+    "sequence",
+    "tree",
+    "table",
+    "grammar",
+    "frame",
+    "graphDAG",
+  ] as const;
+
+  const isTranslator = is.LiteralOneOf(translators);
+  const previewBufName = "__DiagonOutput__";
+
   await denops.cmd(
-    `command! -nargs=1 Hello call denops#notify("${denops.name}", "hello", [<f-args>])`,
+    `command! -nargs=1 -complete=customlist,diagonps#translators Diagonps call denops#notify("${denops.name}", "translator", [<f-args>])`,
   );
 
-  denops.dispatcher = {
-    async hello(arg: unknown): Promise<void> {
-      if (isString(arg)) {
-        console.log("hello", arg);
+  const openPreviewBuffer = async (denops: Denops): Promise<void> => {
+    if (!await bufexists(denops, previewBufName)) {
+      await denops.cmd(
+        `new ${previewBufName} | setlocal buftype=nofile bufhidden=wipe noswapfile`,
+      );
+    } else {
+      const winid = await bufwinid(denops, previewBufName);
+      if (winid !== -1) {
+        await win_gotoid(denops, winid);
+      } else {
+        await denops.cmd(`sb ${previewBufName}`);
       }
-      await Promise.resolve();
+    }
+  };
+
+  denops.dispatcher = {
+    async translator(translator: unknown): Promise<void> {
+      if (!isTranslator(translator)) {
+        console.error(`Invalid translator: ${translator}`);
+        return;
+      }
+
+      const content = await getbufline(denops, "%", 1, "$");
+      const output = diagon.translate[translator](content.join("\n"));
+
+      const oldwinid = await bufwinid(denops, "%");
+      await openPreviewBuffer(denops);
+      await setbufline(denops, "%", 1, output.split("\n"));
+      await win_gotoid(denops, oldwinid);
     },
   };
 }
