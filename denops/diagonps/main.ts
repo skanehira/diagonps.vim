@@ -6,6 +6,7 @@ import {
   setbufline,
   win_gotoid,
 } from "jsr:@denops/std@7.3.0/function";
+import * as mapping from "jsr:@denops/std@7.3.0/mapping";
 import { is } from "jsr:@core/unknownutil@4.3.0";
 import Diagon from "npm:diagonjs";
 
@@ -32,8 +33,16 @@ export async function main(denops: Denops): Promise<void> {
   const openPreviewBuffer = async (denops: Denops): Promise<void> => {
     if (!await bufexists(denops, previewBufName)) {
       await denops.cmd(
-        `new ${previewBufName} | setlocal buftype=nofile bufhidden=wipe noswapfile`,
+        `new ${previewBufName} | setlocal buftype=nofile bufhidden=wipe noswapfile nowrap nocursorline`,
       );
+
+      mapping.map(denops, "q", "<Cmd>bw<CR>", {
+        mode: ["n"],
+        buffer: true,
+        silent: true,
+        noremap: true,
+      });
+
     } else {
       const winid = await bufwinid(denops, previewBufName);
       if (winid !== -1) {
