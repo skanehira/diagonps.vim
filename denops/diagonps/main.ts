@@ -1,12 +1,10 @@
 import { Denops } from "jsr:@denops/std@7.3.0";
-import {
-  bufexists,
-  bufwinid,
-  getbufline,
-  setbufline,
-  win_gotoid,
-} from "jsr:@denops/std@7.3.0/function";
+import * as fn from "jsr:@denops/std@7.3.0/function";
+import * as buffer from "jsr:@denops/std@7.3.0/buffer";
+import * as option from "jsr:@denops/std@7.3.0/option";
 import * as mapping from "jsr:@denops/std@7.3.0/mapping";
+import * as batch from "jsr:@denops/std@^7.0.0/batch";
+import * as autocmd from "jsr:@denops/std@^7.0.0/autocmd";
 import { is } from "jsr:@core/unknownutil@4.3.0";
 import Diagon from "npm:diagonjs";
 
@@ -30,23 +28,23 @@ export async function main(denops: Denops): Promise<void> {
     `command! -nargs=1 -complete=customlist,diagonps#translators Diagonps call denops#notify("${denops.name}", "translator", [<f-args>])`,
   );
 
+  await autocmd.group(denops, "diagonps", (helper) => {
+    helper.define(
+      "BufReadCmd",
+      previewBufName,
+      `call denops#notify("${denops.name}", "initPreview", [bufnr("%")])`,
+    );
+  });
+
   const openPreviewBuffer = async (denops: Denops): Promise<void> => {
-    if (!await bufexists(denops, previewBufName)) {
-      await denops.cmd(
-        `new ${previewBufName} | setlocal buftype=nofile bufhidden=wipe noswapfile nowrap nocursorline`,
-      );
-
-      mapping.map(denops, "q", "<Cmd>bw<CR>", {
-        mode: ["n"],
-        buffer: true,
-        silent: true,
-        noremap: true,
+    if (!await fn.bufexists(denops, previewBufName)) {
+      await buffer.open(denops, previewBufName, {
+        opener: "new",
       });
-
     } else {
-      const winid = await bufwinid(denops, previewBufName);
+      const winid = await fn.bufwinid(denops, previewBufName);
       if (winid !== -1) {
-        await win_gotoid(denops, winid);
+        await fn.win_gotoid(denops, winid);
       } else {
         await denops.cmd(`sb ${previewBufName}`);
       }
@@ -54,19 +52,41 @@ export async function main(denops: Denops): Promise<void> {
   };
 
   denops.dispatcher = {
+    async initPreview(bufnr: unknown): Promise<void> {
+      if (!is.Number(bufnr)) {
+        console.error(`Invalid bufnr: ${bufnr}`);
+        return;
+      }
+      await batch.batch(denops, async (denops) => {
+        await option.buftype.setBuffer(denops, bufnr, "nofile");
+        await option.swapfile.setBuffer(denops, bufnr, false);
+        await option.bufhidden.setBuffer(denops, bufnr, "wipe");
+        await option.wrap.setLocal(denops, false);
+        await option.cursorline.setLocal(denops, false);
+      });
+    },
     async translator(translator: unknown): Promise<void> {
       if (!isTranslator(translator)) {
         console.error(`Invalid translator: ${translator}`);
         return;
       }
 
-      const content = await getbufline(denops, "%", 1, "$");
+      const content = await fn.getbufline(denops, "%", 1, "$");
       const output = diagon.translate[translator](content.join("\n"));
 
-      const oldwinid = await bufwinid(denops, "%");
+      const oldwinid = await fn.bufwinid(denops, "%");
       await openPreviewBuffer(denops);
-      await setbufline(denops, "%", 1, output.split("\n"));
-      await win_gotoid(denops, oldwinid);
+
+      await mapping.map(denops, "q", "<Cmd>bw<CR>", {
+        mode: ["n"],
+        buffer: true,
+        silent: true,
+        noremap: true,
+      });
+      await fn.deletebufline(denops, previewBufName, 1, "$");
+      await fn.setbufline(denops, "%", 1, output.split("\n"));
+
+      await fn.win_gotoid(denops, oldwinid);
     },
   };
 }
