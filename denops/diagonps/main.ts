@@ -4,7 +4,6 @@ import * as buffer from "jsr:@denops/std@7.3.0/buffer";
 import * as option from "jsr:@denops/std@7.3.0/option";
 import * as mapping from "jsr:@denops/std@7.3.0/mapping";
 import * as batch from "jsr:@denops/std@^7.0.0/batch";
-import * as autocmd from "jsr:@denops/std@^7.0.0/autocmd";
 import { is } from "jsr:@core/unknownutil@4.3.0";
 import Diagon from "npm:diagonjs";
 
@@ -28,18 +27,17 @@ export async function main(denops: Denops): Promise<void> {
     `command! -nargs=1 -complete=customlist,diagonps#translators Diagonps call denops#notify("${denops.name}", "translator", [<f-args>])`,
   );
 
-  await autocmd.group(denops, "diagonps", (helper) => {
-    helper.define(
-      "BufReadCmd",
-      previewBufName,
-      `call denops#notify("${denops.name}", "initPreview", [bufnr("%")])`,
-    );
-  });
-
   const openPreviewBuffer = async (denops: Denops): Promise<void> => {
     if (!await fn.bufexists(denops, previewBufName)) {
-      await buffer.open(denops, previewBufName, {
+      const { bufnr } = await buffer.open(denops, previewBufName, {
         opener: "new",
+      });
+      await batch.batch(denops, async (denops) => {
+        await option.buftype.setBuffer(denops, bufnr, "nofile");
+        await option.swapfile.setBuffer(denops, bufnr, false);
+        await option.bufhidden.setBuffer(denops, bufnr, "wipe");
+        await option.wrap.setLocal(denops, false);
+        await option.cursorline.setLocal(denops, false);
       });
     } else {
       const winid = await fn.bufwinid(denops, previewBufName);
@@ -52,19 +50,6 @@ export async function main(denops: Denops): Promise<void> {
   };
 
   denops.dispatcher = {
-    async initPreview(bufnr: unknown): Promise<void> {
-      if (!is.Number(bufnr)) {
-        console.error(`Invalid bufnr: ${bufnr}`);
-        return;
-      }
-      await batch.batch(denops, async (denops) => {
-        await option.buftype.setBuffer(denops, bufnr, "nofile");
-        await option.swapfile.setBuffer(denops, bufnr, false);
-        await option.bufhidden.setBuffer(denops, bufnr, "wipe");
-        await option.wrap.setLocal(denops, false);
-        await option.cursorline.setLocal(denops, false);
-      });
-    },
     async translator(translator: unknown): Promise<void> {
       if (!isTranslator(translator)) {
         console.error(`Invalid translator: ${translator}`);
